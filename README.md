@@ -1,3 +1,5 @@
+> **Note** This is a reupload from mrq's tortoise-tts modified repo https://git.ecker.tech/mrq/tortoise-tts
+
 # (QoL improvements for) TorToiSe
 
 This repo is for my modifications to [neonbjb/tortoise-tts](https://github.com/neonbjb/tortoise-tts). If you need the original README, refer to the original repo.
