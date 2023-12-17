@@ -1,0 +1,15 @@
+tqdm
+rotary_embedding_torch
+transformers==4.19
+tokenizers
+inflect
+progressbar
+einops
+unidecode
+scipy
+librosa==0.8.1
+torchaudio
+threadpoolctl
+appdirs
+numpy<=1.23.5
+numba
