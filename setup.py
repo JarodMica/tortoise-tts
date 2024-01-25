@@ -29,7 +29,7 @@ setuptools.setup(
         'librosa',
         'transformers',
         'tokenizers',
-        'transformers==4.19',
+        'transformers==4.29.2',
         'torchaudio',
         'threadpoolctl',
         'appdirs',
