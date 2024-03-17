@@ -197,8 +197,11 @@ class VoiceBpeTokenizer:
 
           txt = " ".join(words)
           txt = basic_cleaners(txt)
-        else:
+        elif self.language == "en":
           txt = english_cleaners(txt)
+        else:
+          # If you use english cleaners on any other language that is not english... you basically destroy it. 
+          txt = basic_cleaners(txt)
         return txt
 
     def encode(self, txt):

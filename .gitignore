@@ -3,6 +3,7 @@
 /tortoise/voices/
 /models/
 /config/*
+tortoise/onnx_tests/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

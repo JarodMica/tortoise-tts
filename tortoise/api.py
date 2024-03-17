@@ -392,7 +392,7 @@ class TextToSpeech:
         self.autoregressive.post_init_gpt2_config(use_deepspeed=self.use_deepspeed, kv_cache=self.use_kv_cache)
         if self.preloaded_tensors:
             self.autoregressive = migrate_to_device( self.autoregressive, self.device )
-
+            
         self.loading = False
         print(f"Loaded autoregressive model")
 
