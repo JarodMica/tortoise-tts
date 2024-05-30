@@ -364,6 +364,7 @@ class TextToSpeech:
         if hasattr(self, 'autoregressive'):
             del self.autoregressive
 
+        ar_load = torch.load(self.autoregressive_model_path, weights_only=True)
         # XTTS requires a different "dimensionality" for its autoregressive model
         if new_hash == "e4ce21eae0043f7691d6a6c8540b74b8" or is_xtts:
             dimensionality = {
@@ -389,7 +390,7 @@ class TextToSpeech:
                 "layers": 30,
                 "model_dim": 1024,
                 "heads": 16,
-                "number_text_tokens": 255,
+                "number_text_tokens": ar_load["text_embedding.weight"].shape[0]-1, # Dynamic loading, got annoyed changing this each time
                 "start_text_token": 255,
                 "checkpointing": False,
                 "train_solo_embeddings": False
@@ -724,6 +725,7 @@ class TextToSpeech:
                                 return_latent=True, clip_inputs=False)
             if verbose:
                 print("generating audio..")
+            ## The part that's needed to fix AR output isn't needed in here, but some trained models have lots of empty silence still at the end
             wav_gen = self.hifi_decoder.inference(gpt_latents.to(self.device), auto_conditioning)
             return wav_gen
     def deterministic_state(self, seed=None):

@@ -355,7 +355,8 @@ class TextToSpeech:
 
         if hasattr(self, 'autoregressive'):
             del self.autoregressive
-
+            
+        ar_load = torch.load(self.autoregressive_model_path, weights_only=True)
         # XTTS requires a different "dimensionality" for its autoregressive model
         if new_hash == "e4ce21eae0043f7691d6a6c8540b74b8" or is_xtts:
             dimensionality = {
@@ -381,14 +382,14 @@ class TextToSpeech:
                 "layers": 30,
                 "model_dim": 1024,
                 "heads": 16,
-                "number_text_tokens": 255,
+                "number_text_tokens": ar_load["text_embedding.weight"].shape[0]-1, # Dynamic loading, got annoyed changing this each time
                 "start_text_token": 255,
                 "checkpointing": False,
                 "train_solo_embeddings": False
             }
 
         self.autoregressive = UnifiedVoice(**dimensionality).cpu().eval()
-        self.autoregressive.load_state_dict(torch.load(self.autoregressive_model_path))
+        self.autoregressive.load_state_dict(ar_load)
         self.autoregressive.post_init_gpt2_config(use_deepspeed=self.use_deepspeed, kv_cache=self.use_kv_cache)
         if self.preloaded_tensors:
             self.autoregressive = migrate_to_device( self.autoregressive, self.device )
@@ -773,56 +774,82 @@ class TextToSpeech:
             with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=half_p):
                 if not self.preloaded_tensors:
                     self.autoregressive = migrate_to_device( self.autoregressive, 'cpu' )
-                    self.clvp = migrate_to_device( self.clvp, self.device )
-
-                if cvvp_amount > 0:
-                    if self.cvvp is None:
-                        self.load_cvvp()
+                    # self.clvp = migrate_to_device( self.clvp, self.device )
                     
-                    if not self.preloaded_tensors:
-                        self.cvvp = migrate_to_device( self.cvvp, self.device )
+            best_results = []
+            for batch in samples:
+                fixed_batch = []
+                for i in range(batch.shape[0]):
+                    fixed_output = fix_autoregressive_output(batch[i], stop_mel_token)
+                    fixed_batch.append(fixed_output)
+                best_results.extend(fixed_batch)
+
+            best_results = torch.stack(best_results, dim=0)
+
+                # if cvvp_amount > 0:
+                #     if self.cvvp is None:
+                #         self.load_cvvp()
+                    
+                #     if not self.preloaded_tensors:
+                #         self.cvvp = migrate_to_device( self.cvvp, self.device )
                 
-                desc="Computing best candidates"
-                if verbose:
-                    if self.cvvp is None:
-                        desc = "Computing best candidates using CLVP"
-                    else:
-                        desc = f"Computing best candidates using CLVP {((1-cvvp_amount) * 100):2.0f}% and CVVP {(cvvp_amount * 100):2.0f}%"
+                # desc="Computing best candidates"
+                # if verbose:
+                #     if self.cvvp is None:
+                #         desc = "Computing best candidates using CLVP"
+                #     else:
+                #         desc = f"Computing best candidates using CLVP {((1-cvvp_amount) * 100):2.0f}% and CVVP {(cvvp_amount * 100):2.0f}%"
 
                 
-                for batch in tqdm(samples, desc=desc):
-                    check_for_kill_signal()
-                    for i in range(batch.shape[0]):
-                        batch[i] = fix_autoregressive_output(batch[i], stop_mel_token)
+                # for batch in tqdm(samples, desc=desc):
+                #     check_for_kill_signal()
+                #     for i in range(batch.shape[0]):
+                        # batch[i] = fix_autoregressive_output(batch[i], stop_mel_token)
 
-                    if cvvp_amount != 1:
-                        clvp = self.clvp(text_tokens.repeat(batch.shape[0], 1), batch, return_loss=False)
+                #     if cvvp_amount != 1:
+                #         clvp = self.clvp(text_tokens.repeat(batch.shape[0], 1), batch, return_loss=False)
                         
-                    if auto_conds is not None and cvvp_amount > 0:
-                        cvvp_accumulator = 0
-                        for cl in range(auto_conds.shape[1]):
-                            cvvp_accumulator = cvvp_accumulator + self.cvvp(auto_conds[:, cl].repeat(batch.shape[0], 1, 1), batch, return_loss=False)
-                        cvvp = cvvp_accumulator / auto_conds.shape[1]
-                        if cvvp_amount == 1:
-                            clip_results.append(cvvp)
-                        else:
-                            clip_results.append(cvvp * cvvp_amount + clvp * (1-cvvp_amount))
-                    else:
-                        clip_results.append(clvp)
+                #     if auto_conds is not None and cvvp_amount > 0:
+                #         cvvp_accumulator = 0
+                #         for cl in range(auto_conds.shape[1]):
+                #             cvvp_accumulator = cvvp_accumulator + self.cvvp(auto_conds[:, cl].repeat(batch.shape[0], 1, 1), batch, return_loss=False)
+                #         cvvp = cvvp_accumulator / auto_conds.shape[1]
+                #         if cvvp_amount == 1:
+                #             clip_results.append(cvvp)
+                #         else:
+                #             clip_results.append(cvvp * cvvp_amount + clvp * (1-cvvp_amount))
+                #     else:
+                #         clip_results.append(clvp)
 
-            if not self.preloaded_tensors and auto_conds is not None:
-                auto_conds = migrate_to_device( auto_conds, 'cpu' )
+            # if not self.preloaded_tensors and auto_conds is not None:
+            #     auto_conds = migrate_to_device( auto_conds, 'cpu' )
 
-            clip_results = torch.cat(clip_results, dim=0)
-            samples = torch.cat(samples, dim=0)
-            if k < num_autoregressive_samples:
-                best_results = samples[torch.topk(clip_results, k=k).indices]
-            else:
-                best_results = samples
-            
-            if not self.preloaded_tensors:
-                self.clvp = migrate_to_device( self.clvp, 'cpu' )
-                self.cvvp = migrate_to_device( self.cvvp, 'cpu' )
+            # clip_results = torch.cat(clip_results, dim=0)
+            # samples = torch.cat(samples, dim=0)
+            # if k < num_autoregressive_samples:
+            #     best_results = samples[torch.topk(clip_results, k=k).indices]
+            # else:
+            #     best_results = samples
+
+            # best_results = torch.cat(best_results, dim=0)
+            # clipped_results = []
+            # for sample in best_results:
+            #     calm_tokens = 0
+            #     for i in range(sample.shape[-1]):
+            #         if sample[i] == calm_token:
+            #             calm_tokens += 1
+            #         else:
+            #             calm_tokens = 0
+            #         if calm_tokens > 8:  # Adjust this value as needed
+            #             sample = sample[:i]
+            #             break
+            #     clipped_results.append(sample)
+
+            # best_results = torch.stack(clipped_results, dim=0)
+
+            # if not self.preloaded_tensors:
+            #     self.clvp = migrate_to_device( self.clvp, 'cpu' )
+            #     self.cvvp = migrate_to_device( self.cvvp, 'cpu' )
             
 
             if get_device_name() == "dml":
