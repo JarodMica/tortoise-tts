@@ -389,7 +389,7 @@ class TextToSpeech:
             }
 
         self.autoregressive = UnifiedVoice(**dimensionality).cpu().eval()
-        self.autoregressive.load_state_dict(ar_load)
+        self.autoregressive.load_state_dict(ar_load, strict=False)
         self.autoregressive.post_init_gpt2_config(use_deepspeed=self.use_deepspeed, kv_cache=self.use_kv_cache)
         if self.preloaded_tensors:
             self.autoregressive = migrate_to_device( self.autoregressive, self.device )
